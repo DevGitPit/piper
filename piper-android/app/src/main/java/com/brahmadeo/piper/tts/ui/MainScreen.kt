@@ -193,8 +193,8 @@ fun MainScreen(
                             Slider(
                                 value = volume,
                                 onValueChange = onVolumeChange,
-                                valueRange = 0.0f..1.5f,
-                                steps = 14
+                                valueRange = 1.0f..2.5f,
+                                steps = 2
                             )
                         }
 

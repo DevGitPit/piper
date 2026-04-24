@@ -315,7 +315,7 @@ class MainActivity : ComponentActivity() {
         viewModel.currentLang.value = "en"
         viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", MainViewModel.DEFAULT_VOICE) ?: MainViewModel.DEFAULT_VOICE
         viewModel.currentSpeed.value = prefs.getFloat("speed", 1.0f)
-        viewModel.currentVolume.value = prefs.getFloat("volume", 1.0f)
+        viewModel.currentVolume.value = prefs.getFloat("volume", 1.0f).coerceIn(1.0f, 2.5f)
         viewModel.currentThreads.value = prefs.getInt("inference_threads", MainViewModel.DEFAULT_THREADS)
     }
 

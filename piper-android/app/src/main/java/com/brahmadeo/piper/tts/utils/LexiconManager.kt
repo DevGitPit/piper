@@ -77,8 +77,6 @@ object LexiconManager {
     }
 
     fun apply(text: String): String {
-        // If not loaded, we can't apply rules safely without context to load them.
-        // Consumers must ensure load(context) is called at app start.
         if (cachedRules.isEmpty()) return text
         
         var processed = text
@@ -92,8 +90,17 @@ object LexiconManager {
                 val pattern = if (item.isRegex) {
                     Pattern.compile(item.term, flags)
                 } else {
-                    // Whole word matching with quoting
-                    Pattern.compile("\\b${Pattern.quote(item.term)}\\b", flags)
+                    val quotedTerm = Pattern.quote(item.term)
+                    val firstChar = item.term.first()
+                    val lastChar = item.term.last()
+                    
+                    // Smarter boundaries:
+                    // If it starts/ends with a word char, use \b. 
+                    // Otherwise (like #), don't force a boundary where it won't exist.
+                    val startBoundary = if (firstChar.isLetterOrDigit()) "\\b" else ""
+                    val endBoundary = if (lastChar.isLetterOrDigit()) "\\b" else ""
+                    
+                    Pattern.compile("$startBoundary$quotedTerm$endBoundary", flags)
                 }
                 processed = pattern.matcher(processed).replaceAll(item.replacement)
             } catch (e: Exception) {

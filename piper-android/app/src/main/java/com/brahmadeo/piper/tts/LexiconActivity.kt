@@ -18,7 +18,7 @@ import com.brahmadeo.piper.tts.service.IPlaybackService
 import com.brahmadeo.piper.tts.service.PlaybackService
 import com.brahmadeo.piper.tts.ui.LexiconEditDialog
 import com.brahmadeo.piper.tts.ui.LexiconScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.LexiconItem
 import com.brahmadeo.piper.tts.utils.LexiconManager
 import com.brahmadeo.piper.tts.utils.AssetManager
@@ -61,7 +61,7 @@ class LexiconActivity : ComponentActivity() {
         bindService(intent, connection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 var showEditDialog by remember { mutableStateOf(false) }
                 var editingItem by remember { mutableStateOf<LexiconItem?>(null) }
 
@@ -158,7 +158,7 @@ class LexiconActivity : ComponentActivity() {
                 jsonArray.put(obj)
             }
 
-            val fileName = "supertonic_lexicon.json"
+            val fileName = "piper_lexicon.json"
             val file = File(cacheDir, fileName)
             file.writeText(jsonArray.toString(2))
 
@@ -252,7 +252,7 @@ class LexiconActivity : ComponentActivity() {
             return
         }
 
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
         val version = if (selectedLang == "en") "v1" else "v2"
 
@@ -269,11 +269,12 @@ class LexiconActivity : ComponentActivity() {
         // Pad the word to increase reliability for the model
         val testMsg = getString(R.string.testing_pronunciation_fmt, cleanText)
         val finalText = "$testMsg."
+        val volume = prefs.getFloat("volume", 1.0f)
 
         Toast.makeText(this, testMsg, Toast.LENGTH_SHORT).show()
 
         try {
-            playbackService?.synthesizeAndPlay(finalText, selectedLang, 1.0f, 0)
+            playbackService?.synthesizeAndPlay(finalText, selectedLang, 1.0f, volume, 0)
         } catch (e: RemoteException) {
             e.printStackTrace()
         }

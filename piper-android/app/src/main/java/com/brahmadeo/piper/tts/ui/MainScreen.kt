@@ -39,19 +39,13 @@ fun MainScreen(
     selectedVoiceFile: String,
     onVoiceChange: (String) -> Unit,
 
-    // Mixing
-    isMixingEnabled: Boolean,
-    onMixingEnabledChange: (Boolean) -> Unit,
-    selectedVoiceFile2: String,
-    onVoice2Change: (String) -> Unit,
-    mixAlpha: Float,
-    onMixAlphaChange: (Float) -> Unit,
-
-    // Speed & Quality
+    // Speed & Threads
     speed: Float,
     onSpeedChange: (Float) -> Unit,
-    steps: Int,
-    onStepsChange: (Int) -> Unit,
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
+    threads: Int,
+    onThreadsChange: (Int) -> Unit,
 
     // Menu Actions
     onResetClick: () -> Unit,
@@ -75,7 +69,7 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Supertonic TTS") },
+                title = { Text("Piper TTS") },
                 actions = {
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Menu")
@@ -94,12 +88,6 @@ fun MainScreen(
                             onClick = { showMenu = false; onLexiconClick() },
                             enabled = currentLangCode == "en"
                         )
-                        if (isV2Ready && currentLangCode == "en") {
-                            DropdownMenuItem(
-                                text = { Text("Delete Multilingual Models", color = MaterialTheme.colorScheme.error) },
-                                onClick = { showMenu = false; onDeleteV2Click() }
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -176,45 +164,11 @@ fun MainScreen(
 
                         // Voice Selector
                         DropdownSelector(
-                            label = "Voice Style",
+                            label = "Voice",
                             options = voices.keys.toList().sorted(),
                             selectedOption = voices.entries.find { it.value == selectedVoiceFile }?.key ?: "",
-                            onOptionSelected = { name -> onVoiceChange(voices[name] ?: "M1.json") }
+                            onOptionSelected = { name -> onVoiceChange(voices[name] ?: "") }
                         )
-
-                        // Mix Switch
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Mix Voices", modifier = Modifier.weight(1f))
-                            Switch(checked = isMixingEnabled, onCheckedChange = onMixingEnabledChange)
-                        }
-
-                        // Mixing Controls
-                        AnimatedVisibility(visible = isMixingEnabled) {
-                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                DropdownSelector(
-                                    label = "Secondary Voice",
-                                    options = voices.keys.toList().sorted(),
-                                    selectedOption = voices.entries.find { it.value == selectedVoiceFile2 }?.key ?: "",
-                                    onOptionSelected = { name -> onVoice2Change(voices[name] ?: "M2.json") }
-                                )
-
-                                Column {
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Mix Ratio", style = MaterialTheme.typography.labelMedium)
-                                        Text("${(mixAlpha * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
-                                    }
-                                    Slider(
-                                        value = mixAlpha,
-                                        onValueChange = onMixAlphaChange,
-                                        valueRange = 0f..1f,
-                                        steps = 9
-                                    )
-                                }
-                            }
-                        }
 
                         // Speed
                         Column {
@@ -225,22 +179,36 @@ fun MainScreen(
                             Slider(
                                 value = speed,
                                 onValueChange = onSpeedChange,
-                                valueRange = 0.9f..1.5f,
-                                steps = 11
+                                valueRange = 0.5f..2.0f,
+                                steps = 14
                             )
                         }
 
-                        // Quality
+                        // Volume
                         Column {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Quality (Steps)", style = MaterialTheme.typography.labelMedium)
-                                Text("$steps steps", style = MaterialTheme.typography.labelLarge)
+                                Text("Volume (Gain)", style = MaterialTheme.typography.labelMedium)
+                                Text(String.format("%.1fx", volume), style = MaterialTheme.typography.labelLarge)
                             }
                             Slider(
-                                value = steps.toFloat(),
-                                onValueChange = { onStepsChange(it.toInt()) },
-                                valueRange = 1f..10f,
-                                steps = 8
+                                value = volume,
+                                onValueChange = onVolumeChange,
+                                valueRange = 0.0f..1.5f,
+                                steps = 14
+                            )
+                        }
+
+                        // Threads
+                        Column {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Threads", style = MaterialTheme.typography.labelMedium)
+                                Text("$threads threads", style = MaterialTheme.typography.labelLarge)
+                            }
+                            Slider(
+                                value = threads.toFloat(),
+                                onValueChange = { onThreadsChange(it.toInt()) },
+                                valueRange = 1f..5f,
+                                steps = 3
                             )
                         }
                     }

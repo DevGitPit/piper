@@ -30,7 +30,7 @@ fun SavedAudioScreen(
 
     fun loadFiles() {
         val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-        val appDir = File(musicDir, "Supertonic Audio")
+        val appDir = File(musicDir, "Piper Audio")
         if (appDir.exists()) {
             files = appDir.listFiles { _, name -> name.endsWith(".wav") }
                 ?.sortedByDescending { it.lastModified() }

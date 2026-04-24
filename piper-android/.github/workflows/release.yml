@@ -91,13 +91,13 @@ jobs:
 
       - name: Rename Signed Assets
         run: |
-          mv ${{ steps.sign_apk.outputs.signedReleaseFile }} app/build/outputs/apk/release/Supertonic-${{ github.ref_name }}.apk
-          mv ${{ steps.sign_bundle.outputs.signedReleaseFile }} app/build/outputs/bundle/release/Supertonic-${{ github.ref_name }}.aab
+          mv ${{ steps.sign_apk.outputs.signedReleaseFile }} app/build/outputs/apk/release/Piper-${{ github.ref_name }}.apk
+          mv ${{ steps.sign_bundle.outputs.signedReleaseFile }} app/build/outputs/bundle/release/Piper-${{ github.ref_name }}.aab
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            app/build/outputs/apk/release/Supertonic-${{ github.ref_name }}.apk
-            app/build/outputs/bundle/release/Supertonic-${{ github.ref_name }}.aab
+            app/build/outputs/apk/release/Piper-${{ github.ref_name }}.apk
+            app/build/outputs/bundle/release/Piper-${{ github.ref_name }}.aab

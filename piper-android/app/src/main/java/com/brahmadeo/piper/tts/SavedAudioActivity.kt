@@ -6,7 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.content.FileProvider
 import com.brahmadeo.piper.tts.ui.SavedAudioScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import java.io.File
 
 class SavedAudioActivity : ComponentActivity() {
@@ -14,7 +14,7 @@ class SavedAudioActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 SavedAudioScreen(
                     onBackClick = { finish() },
                     onPlayAudio = { file -> playAudio(file) }

@@ -2,7 +2,7 @@ package com.brahmadeo.piper.tts
 
 import android.util.Log
 
-object SupertonicTTS {
+object PiperTTS {
     private var nativePtr: Long = 0
 
     init {
@@ -34,15 +34,15 @@ object SupertonicTTS {
         for (lib in libs) {
             try {
                 System.loadLibrary(lib)
-                Log.d("SupertonicTTS", "Loaded library: $lib")
+                Log.d("PiperTTS", "Loaded library: $lib")
             } catch (e: UnsatisfiedLinkError) {
-                Log.e("SupertonicTTS", "Failed to load library: $lib - ${e.message}")
+                Log.e("PiperTTS", "Failed to load library: $lib - ${e.message}")
             }
         }
     }
 
     private external fun init(modelPath: String, libPath: String, ortThreads: Int, xnnThreads: Int): Long
-    private external fun synthesize(ptr: Long, text: String, lang: String, speed: Float, bufferSeconds: Float): ByteArray
+    private external fun synthesize(ptr: Long, text: String, lang: String, speed: Float, volume: Float, bufferSeconds: Float): ByteArray
     private external fun getSocClass(ptr: Long): Int
     private external fun getSampleRate(ptr: Long): Int
     private external fun close(ptr: Long)
@@ -50,35 +50,34 @@ object SupertonicTTS {
 
     @Synchronized
     fun initialize(modelPath: String, libPath: String, ortThreads: Int = 4, xnnThreads: Int = 1): Boolean {
-        Log.d("SupertonicTTS", "initialize() called with modelPath: $modelPath")
+        Log.d("PiperTTS", "initialize() called with modelPath: $modelPath")
         if (nativePtr != 0L) {
-            // Health check: Can we still talk to the engine?
             try {
                 if (getSocClass(nativePtr) != -1) {
-                    Log.i("SupertonicTTS", "Engine already initialized and healthy")
+                    Log.i("PiperTTS", "Engine already initialized and healthy")
                     return true
                 }
             } catch (e: Exception) {
-                Log.w("SupertonicTTS", "Health check failed: ${e.message}")
+                Log.w("PiperTTS", "Health check failed: ${e.message}")
             }
-            Log.w("SupertonicTTS", "Engine pointer exists but is unhealthy. Re-initializing...")
+            Log.w("PiperTTS", "Engine pointer exists but is unhealthy. Re-initializing...")
             release()
         }
         
         try {
             nativePtr = init(modelPath, libPath, ortThreads, xnnThreads)
         } catch (e: UnsatisfiedLinkError) {
-            Log.e("SupertonicTTS", "Native method init() not found: ${e.message}")
+            Log.e("PiperTTS", "Native method init() not found: ${e.message}")
             return false
         } catch (e: Exception) {
-            Log.e("SupertonicTTS", "Error calling init(): ${e.message}")
+            Log.e("PiperTTS", "Error calling init(): ${e.message}")
             return false
         }
         val success = nativePtr != 0L
         if (success) {
-            Log.i("SupertonicTTS", "Engine initialized successfully (ORT: $ortThreads, XNN: $xnnThreads): $nativePtr")
+            Log.i("PiperTTS", "Engine initialized successfully (ORT: $ortThreads, XNN: $xnnThreads): $nativePtr")
         } else {
-            Log.e("SupertonicTTS", "Engine initialization FAILED")
+            Log.e("PiperTTS", "Engine initialization FAILED")
         }
         return success
     }
@@ -106,11 +105,9 @@ object SupertonicTTS {
     // Called from JNI
     fun notifyProgress(current: Int, total: Int) {
         val sid = currentSessionId
-        // Priority to task-specific listener
         if (currentTaskListener != null) {
             currentTaskListener?.onProgress(sid, current, total)
         } else {
-            // Only notify global listeners if no specific task listener is set
             for (l in listeners) l.onProgress(sid, current, total)
         }
     }
@@ -118,12 +115,9 @@ object SupertonicTTS {
     // Called from JNI
     fun notifyAudioChunk(data: ByteArray) {
         val sid = currentSessionId
-        // STRICT ISOLATION: Audio chunks ONLY go to the requester
         if (currentTaskListener != null) {
             currentTaskListener?.onAudioChunk(sid, data)
         } else {
-            // Only if no specific task listener is active (e.g. legacy app call)
-            // we send to global listeners
             for (l in listeners) l.onAudioChunk(sid, data)
         }
     }
@@ -141,20 +135,20 @@ object SupertonicTTS {
     }
 
     @Synchronized
-    fun generateAudio(text: String, lang: String, speed: Float = 1.0f, bufferDuration: Float = 0.0f, listener: ProgressListener? = null): ByteArray? {
+    fun generateAudio(text: String, lang: String, speed: Float = 1.0f, volume: Float = 1.0f, bufferDuration: Float = 0.0f, listener: ProgressListener? = null): ByteArray? {
         if (nativePtr == 0L) {
-            Log.e("SupertonicTTS", "Engine not initialized")
+            Log.e("PiperTTS", "Engine not initialized")
             return null
         }
         
-        currentSessionId++ // New session for every sentence
+        currentSessionId++
         currentTaskListener = listener
         
         try {
-            val data = synthesize(nativePtr, text, lang, speed, bufferDuration)
+            val data = synthesize(nativePtr, text, lang, speed, volume, bufferDuration)
             return if (data.isNotEmpty()) data else null
         } catch (e: Exception) {
-            Log.e("SupertonicTTS", "Native synthesis exception: ${e.message}")
+            Log.e("PiperTTS", "Native synthesis exception: ${e.message}")
             return null
         } finally {
             currentTaskListener = null
@@ -176,7 +170,7 @@ object SupertonicTTS {
     @Synchronized
     fun release() {
         if (nativePtr != 0L) {
-            Log.i("SupertonicTTS", "Releasing engine: $nativePtr")
+            Log.i("PiperTTS", "Releasing engine: $nativePtr")
             close(nativePtr)
             nativePtr = 0
         }

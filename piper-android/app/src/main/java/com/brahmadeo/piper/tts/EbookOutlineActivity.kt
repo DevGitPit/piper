@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.EbookManager
 import com.brahmadeo.piper.tts.utils.EbookParser
 import kotlinx.coroutines.CoroutineScope
@@ -80,7 +80,7 @@ class EbookOutlineActivity : ComponentActivity() {
         val ebookFile = File(ebookPath)
 
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 OutlineScreen(
                     ebookFile = ebookFile,
                     onTextExtracted = { text ->

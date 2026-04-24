@@ -21,7 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.EbookManager
 import com.brahmadeo.piper.tts.utils.RecentBook
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +56,7 @@ class EbookLibraryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 LibraryScreen(
                     onBack = { finish() },
                     onOpenNew = { ebookPickerLauncher.launch(arrayOf("application/epub+zip", "application/pdf")) },

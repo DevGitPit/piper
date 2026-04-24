@@ -1,8 +1,8 @@
 <resources>
-    <string name="app_name">Supertonic TTS</string>
+    <string name="app_name">Piper TTS</string>
     
     <!-- Main Activity -->
-    <string name="default_input_text">Olá mundo, este é o Supertonic TTS no Android. Selecione uma voz e velocidade abaixo!</string>
+    <string name="default_input_text">Olá mundo, este é o Piper TTS no Android. Selecione uma voz e velocidade abaixo!</string>
     <string name="voice_style_label">Estilo de Voz</string>
     <string name="speed_label">Velocidade</string>
     <string name="quality_label">Qualidade</string>

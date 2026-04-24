@@ -9,22 +9,20 @@ import java.io.IOException
 
 object AssetManager {
     private const val PIPER_DIR = "piper"
-    private const val PIPER_MODEL = "en_US-lessac-high.onnx"
-    private const val PIPER_CONFIG = "en_US-lessac-high.onnx.json"
     private const val ESPEAK_DIR = "espeak-ng-data"
 
     fun isV1Ready(context: Context): Boolean {
         val root = File(context.filesDir, PIPER_DIR)
-        return File(root, PIPER_MODEL).exists() &&
-            File(root, PIPER_CONFIG).exists() &&
-            File(root, ESPEAK_DIR).isDirectory
+        // Check if at least one model exists and espeak data
+        val models = root.listFiles { _, name -> name.endsWith(".onnx") }
+        return !models.isNullOrEmpty() && File(root, ESPEAK_DIR).isDirectory
     }
 
     fun isV2Ready(context: Context): Boolean = false
 
     suspend fun downloadV1(context: Context, onProgress: (String, Float) -> Unit) {
         withContext(Dispatchers.IO) {
-            onProgress("Preparing bundled English model...", 0.1f)
+            onProgress("Preparing bundled Piper models...", 0.1f)
             ensureBundledEnglishAssets(context)
             onProgress("Ready", 1.0f)
         }
@@ -43,27 +41,20 @@ object AssetManager {
         }
     }
 
-    fun getModelPath(context: Context, version: String): String {
-        return if (version == "v1") {
-            File(context.filesDir, "$PIPER_DIR/$PIPER_MODEL").absolutePath
-        } else {
-            File(context.filesDir, "$version/onnx").absolutePath
-        }
-    }
-
-    fun getVoiceStylePath(context: Context, version: String, voiceFile: String): String {
-        return if (version == "v1") {
-            ""
-        } else {
-            File(context.filesDir, "$version/voice_styles/$voiceFile").absolutePath
-        }
+    fun getModelPath(context: Context, voiceFile: String): String {
+        return File(context.filesDir, "$PIPER_DIR/$voiceFile").absolutePath
     }
 
     private fun ensureBundledEnglishAssets(context: Context) {
         val targetRoot = File(context.filesDir, PIPER_DIR)
         targetRoot.mkdirs()
-        copyAssetIfMissing(context, "onnx/$PIPER_MODEL", File(targetRoot, PIPER_MODEL))
-        copyAssetIfMissing(context, "onnx/$PIPER_CONFIG", File(targetRoot, PIPER_CONFIG))
+        
+        // Copy all models from onnx assets
+        val assets = context.assets.list("onnx") ?: emptyArray()
+        for (asset in assets) {
+            copyAssetIfMissing(context, "onnx/$asset", File(targetRoot, asset))
+        }
+        
         copyAssetDir(context, ESPEAK_DIR, File(targetRoot, ESPEAK_DIR))
     }
 

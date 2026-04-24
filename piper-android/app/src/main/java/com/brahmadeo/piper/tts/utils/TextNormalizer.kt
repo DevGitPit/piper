@@ -23,18 +23,6 @@ class TextNormalizer {
             rulesList.add(Rule(Pattern.compile(regex, Pattern.CASE_INSENSITIVE), replacement))
         }
 
-        // QUOTE PUNCTUATION SPACING (Model Stability)
-        // Adds space between double quote and punctuation (".) -> (" .) to prevent audio glitches
-        addLambda("([\"”])([.!?])") { m ->
-            "${m.group(1)} ${m.group(2)}"
-        }
-
-        // PARENTHESES SPACING (Audio Fix)
-        // Adds space inside parentheses to fix tokenization artifacts
-        addLambda("\\(([^)]+)\\)") { m ->
-            "( ${m.group(1)} )"
-        }
-
         // RANGE NORMALIZATION (e.g. 10-15 years -> 10 to 15 years)
         // Matches digits separated by hyphen (-), en dash (–), or em dash (—)
         addLambda("\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\b") { m ->
@@ -208,52 +196,38 @@ class TextNormalizer {
     }
 
     fun normalize(text: String, lang: String = "en"): String {
+        // 1. Step 1: Apply User Lexicon (Highest Priority)
+        var processed = LexiconManager.apply(text)
+
         // EARLY EXIT for non-English
-        // We skip Lexicon and all normalization for non-English languages for now
+        // We skip all other normalization for non-English languages for now
         // to prevent English-specific rules from mangling other scripts (e.g. Korean).
         if (!lang.lowercase().startsWith("en")) {
-            return text
+            return processed
         }
 
-        // Step -1: Apply User Lexicon
-        val lexText = LexiconManager.apply(text)
-
-        // Step 0: Fix smushed text from webpage layouts
-        // Fix smushed sentences: lowercase char, period, uppercase char (reserved.Reuse)
-        val smushedSentencePattern = Pattern.compile("([a-z])\\.([A-Z])")
-        var fixedText = smushedSentencePattern.matcher(lexText).replaceAll("$1. $2")
-        
-        // Fix smushed words: lowercase char, uppercase char (economyIMF)
-        val smushedWordPattern1 = Pattern.compile("([a-z])([A-Z])")
-        fixedText = smushedWordPattern1.matcher(fixedText).replaceAll("$1 $2")
-        
-        // Fix smushed words: Uppercase followed by Uppercase+Lowercase (FTNews)
-        val smushedWordPattern2 = Pattern.compile("([A-Z])([A-Z][a-z])")
-        fixedText = smushedWordPattern2.matcher(fixedText).replaceAll("$1 $2")
-
-        // Fix letter-number merges (Published8 -> Published 8)
+        // 2. Fix letter-number merges (Published8 -> Published 8)
         val letterNumberPattern = Pattern.compile("([a-zA-Z])(\\d)")
-        fixedText = letterNumberPattern.matcher(fixedText).replaceAll("$1 $2")
+        processed = letterNumberPattern.matcher(processed).replaceAll("$1 $2")
 
-        // Step 1: Currency
-        var normalized = currencyNormalizer.normalize(fixedText)
+        // 3. Currency Normalization
+        processed = currencyNormalizer.normalize(processed)
         
-        // Step 2: Other rules
+        // 4. Other predefined rules (Abbreviations, Titles, etc.)
         for (rule in rules) {
-            val matcher = rule.pattern.matcher(normalized)
+            val matcher = rule.pattern.matcher(processed)
             val sb = StringBuffer()
             while (matcher.find()) {
                 val replacement = rule.replacement(matcher).replace("\\", "\\\\").replace("$", "\\$")
                 matcher.appendReplacement(sb, replacement)
             }
             matcher.appendTail(sb)
-            normalized = sb.toString()
+            processed = sb.toString()
         }
 
-        // Step 3: Convert remaining numbers to words (CRITICAL for C++ Engine)
-        // Matches integers and decimals (e.g. "300000" -> "three hundred thousand")
+        // 5. Convert remaining numbers to words (CRITICAL for engine consistency)
         val numberPattern = Pattern.compile("\\b(\\d+(?:\\.\\d+)?)\\b")
-        val matcher = numberPattern.matcher(normalized)
+        val matcher = numberPattern.matcher(processed)
         val sb = StringBuffer()
         while (matcher.find()) {
             val numStr = matcher.group(1) ?: ""
@@ -265,15 +239,13 @@ class TextNormalizer {
                 }
                 matcher.appendReplacement(sb, replacement)
             } catch (e: Exception) {
-                // If number is too large for Long, keep it as digits (or implement BigInt logic if needed)
-                // For TTS, massive numbers usually read digit-by-digit anyway
                 matcher.appendReplacement(sb, numStr)
             }
         }
         matcher.appendTail(sb)
-        normalized = sb.toString()
+        processed = sb.toString()
 
-        return normalized
+        return processed
     }
 
     fun splitIntoSentences(text: String): List<String> {
@@ -352,13 +324,8 @@ class TextNormalizer {
 
         var i = 0
         while (i < processedSentences.size) {
-            var sentence = processedSentences[i]
+            val sentence = processedSentences[i]
             
-            // Universal Volatile/Punctuation Fix:
-            // Always insert space before !, ?, ,, ; to stabilize audio
-            // Matches punctuation followed by optional quote/whitespace at end
-            sentence = sentence.replaceFirst(Regex("([!?,;])(['\"”’]?)\\s*$"), " $1$2")
-
             // HANDLE STABLE SENTENCE (Standard Accumulation)
             if (currentChunk.length + sentence.length + 1 <= CHUNK_LIMIT) {
                 if (currentChunk.isNotEmpty()) {

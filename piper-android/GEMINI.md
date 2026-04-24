@@ -1,11 +1,11 @@
-# Supertonic Android Application
+# Piper Android Application
 
 ## Project Overview
-This directory contains the **Android application** for Supertonic, a high-performance, on-device text-to-speech (TTS) system. It demonstrates how to integrate the Supertonic ONNX models into a mobile app using Kotlin and JNI.
+This directory contains the **Android application** for Piper, a high-performance, on-device text-to-speech (TTS) system. It demonstrates how to integrate the Piper ONNX models into a mobile app using Kotlin and JNI.
 
 The application serves two main purposes:
 1.  **Standalone TTS Player:** A user-friendly interface to type/paste text, select voices, and generate speech.
-2.  **System TTS Service:** Implements the Android `TextToSpeechService` API, allowing Supertonic to be used as the system-wide TTS engine.
+2.  **System TTS Service:** Implements the Android `TextToSpeechService` API, allowing Piper to be used as the system-wide TTS engine.
 
 ## Key Features
 *   **Offline Inference:** Runs entirely on-device using ONNX Runtime.
@@ -22,12 +22,12 @@ The application serves two main purposes:
 ### Directory Structure
 *   `app/src/main/java/com.brahmadeo.piper.tts/`: Kotlin source code.
     *   `MainActivity.kt`, `PlaybackActivity.kt`, `QueueActivity.kt`: Key entry points.
-    *   `SupertonicTTS.kt`: JNI wrapper class for the native Rust library.
+    *   `PiperTTS.kt`: JNI wrapper class for the native Rust library.
     *   `ui/`: Jetpack Compose screens (`MainScreen`, `PlaybackScreen`, `HistoryScreen`, `LexiconScreen`, `QueueScreen`, `SavedAudioScreen`).
     *   `viewmodel/`: `MainViewModel.kt` for UI state management.
     *   `service/`:
         *   `PlaybackService.kt`: Foreground service handling audio playback.
-        *   `SupertonicTextToSpeechService.kt`: System TTS service implementation.
+        *   `PiperTextToSpeechService.kt`: System TTS service implementation.
     *   `utils/`: Helpers for text normalization, language detection, and file management (`TextNormalizer`, `LanguageDetector`, `WavUtils`, `AssetManager`, `QueueManager`).
 *   `rust/`: Native Rust/JNI bridge.
     *   `src/lib.rs`: Main JNI interface (init, synthesize, thermal management).
@@ -39,7 +39,7 @@ The application serves two main purposes:
     *   `com.brahmadeo.piper.tts.yml`: Build recipe and metadata.
 
 ### Native Bridge
-The app uses `SupertonicTTS.kt` to communicate with the compiled Rust library (`libpiper_tts.so`).
+The app uses `PiperTTS.kt` to communicate with the compiled Rust library (`libpiper_tts.so`).
 *   **Initialization:** Loads ONNX models and configures the engine.
 *   **Synthesis:** Generates PCM audio data from text.
 *   **Thermal Management:** Monitors device state to adjust performance.

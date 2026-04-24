@@ -2,13 +2,13 @@
 
 **Last updated:** April 20, 2026
 
-Supertonic TTS is an open-source, on-device text-to-speech application. This service is provided by the developer at no cost and is intended for use as is.
+Piper TTS is an open-source, on-device text-to-speech application. This service is provided by the developer at no cost and is intended for use as is.
 
 This page is used to inform users regarding the policies with the collection, use, and disclosure of Personal Information if anyone decides to use the Service.
 
 ## Information Collection and Use
 
-Supertonic TTS **does not collect, store, or transmit any personal data**.
+Piper TTS **does not collect, store, or transmit any personal data**.
 
 *   **Offline Processing:** All text-to-speech synthesis is performed locally on your device using ONNX Runtime and a native Rust core. Your text, generated audio, and pronunciation dictionaries never leave your device.
 *   **Permissions:** The app requests certain permissions strictly for core functionality:

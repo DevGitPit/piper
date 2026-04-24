@@ -11,6 +11,7 @@ data class QueueItem(
     val text: String,
     val lang: String,
     val speed: Float,
+    val volume: Float,
     val startIndex: Int = 0
 )
 
@@ -93,6 +94,7 @@ object QueueManager {
                 obj.put("text", item.text)
                 obj.put("lang", item.lang)
                 obj.put("speed", item.speed.toDouble())
+                obj.put("volume", item.volume.toDouble())
                 obj.put("startIndex", item.startIndex)
                 jsonArray.put(obj)
             }
@@ -119,11 +121,10 @@ object QueueManager {
                     text = obj.getString("text"),
                     lang = obj.getString("lang"),
                     speed = obj.getDouble("speed").toFloat(),
+                    volume = obj.optDouble("volume", 1.0).toFloat(),
                     startIndex = obj.optInt("startIndex", 0)
                 ))
             }
-            // Don't notify here to avoid triggering listeners before UI is ready,
-            // but for initial load it might be fine.
         } catch (e: Exception) {
             e.printStackTrace()
         }

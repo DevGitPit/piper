@@ -3,13 +3,13 @@ Categories:
   - Multimedia
 License: GPL-3.0-only
 AuthorName: Brahmadeo
-SourceCode: https://github.com/DevGitPit/supertonic-android
-IssueTracker: https://github.com/DevGitPit/supertonic-android/issues
+SourceCode: https://github.com/DevGitPit/piper-android
+IssueTracker: https://github.com/DevGitPit/piper-android/issues
 
-AutoName: Supertonic TTS
+AutoName: Piper TTS
 
 RepoType: git
-Repo: https://github.com/DevGitPit/supertonic-android
+Repo: https://github.com/DevGitPit/piper-android
 
 Builds:
   - versionName: 2.7.1

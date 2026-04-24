@@ -62,14 +62,14 @@ object LanguageDetector {
         // 5. English check (ASCII)
         val isRoman = text.all { it.code < 128 || it in ".,!?;:\"'()[]{}«»—– " }
         if (isRoman) {
-            return if (hint != "ko" && isValidSupertonicLang(hint)) hint else "en"
+            return if (hint != "ko" && isValidPiperLang(hint)) hint else "en"
         }
         
         // 6. Fallback
-        return if (isValidSupertonicLang(hint)) hint else "en"
+        return if (isValidPiperLang(hint)) hint else "en"
     }
 
-    private fun isValidSupertonicLang(lang: String): Boolean {
+    private fun isValidPiperLang(lang: String): Boolean {
         val l = lang.lowercase(Locale.ROOT)
         return l in listOf("en", "ko", "es", "pt", "fr")
     }

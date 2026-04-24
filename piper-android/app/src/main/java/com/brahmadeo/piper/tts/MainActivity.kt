@@ -30,7 +30,7 @@ import com.brahmadeo.piper.tts.service.IPlaybackListener
 import com.brahmadeo.piper.tts.service.IPlaybackService
 import com.brahmadeo.piper.tts.service.PlaybackService
 import com.brahmadeo.piper.tts.ui.MainScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.HistoryManager
 import com.brahmadeo.piper.tts.utils.LexiconManager
 import com.brahmadeo.piper.tts.utils.QueueManager
@@ -54,7 +54,11 @@ class MainActivity : ComponentActivity() {
 
     // Data
     private val languages = mapOf(
-        "English" to "en"
+        "English" to "en",
+        "Spanish" to "es",
+        "French" to "fr",
+        "Portuguese" to "pt",
+        "Korean" to "ko"
     )
 
     private var currentModelVersion = "v1"
@@ -70,7 +74,7 @@ class MainActivity : ComponentActivity() {
                 viewModel.isSynthesizing.value = isSynthesizing
                 if (hasContent || isSynthesizing) {
                     viewModel.showMiniPlayer.value = true
-                    val lastText = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).getString("last_text", "")
+                    val lastText = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).getString("last_text", "")
                     if (!lastText.isNullOrEmpty()) {
                         viewModel.miniPlayerTitle.value = lastText
                     }
@@ -177,7 +181,7 @@ class MainActivity : ComponentActivity() {
         checkResumeState()
 
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 run {
                     if (viewModel.showQueueDialog.value) {
                         androidx.compose.material3.AlertDialog(
@@ -215,10 +219,23 @@ class MainActivity : ComponentActivity() {
 
                         languages = languages,
                         currentLangCode = viewModel.currentLang.value,
-                        onLangChange = {
-                            viewModel.currentLang.value = "en"
-                            saveStringPref("selected_lang", "en")
-                            currentModelVersion = "v1"
+                        onLangChange = { lang ->
+                            if (viewModel.currentLang.value != lang) {
+                                viewModel.currentLang.value = lang
+                                saveStringPref("selected_lang", lang)
+                                setupVoicesMap("v1")
+                                
+                                // Pick first available voice for this language
+                                val firstVoice = viewModel.voiceFiles.values.firstOrNull()
+                                if (firstVoice != null) {
+                                    viewModel.selectedVoiceFile.value = firstVoice
+                                    saveStringPref("selected_voice", firstVoice)
+                                }
+                                
+                                val resetIntent = Intent(this, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                                startService(resetIntent)
+                                initializeEngine("v1")
+                            }
                         },
 
                         voices = viewModel.voiceFiles,
@@ -232,28 +249,19 @@ class MainActivity : ComponentActivity() {
                             }
                         },
 
-                        isMixingEnabled = viewModel.isMixingEnabled.value,
-                        onMixingEnabledChange = { 
-                            viewModel.isMixingEnabled.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putBoolean("is_mixing_enabled", it).apply()
-                        },
-                        selectedVoiceFile2 = viewModel.selectedVoiceFile2.value,
-                        onVoice2Change = {
-                            viewModel.selectedVoiceFile2.value = it
-                            saveStringPref("selected_voice_2", it)
-                        },
-                        mixAlpha = viewModel.mixAlpha.value,
-                        onMixAlphaChange = { 
-                            viewModel.mixAlpha.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putFloat("mix_alpha", it).apply()
-                        },
-
                         speed = viewModel.currentSpeed.value,
                         onSpeedChange = { viewModel.currentSpeed.value = it },
-                        steps = viewModel.currentSteps.value,
-                        onStepsChange = {
-                            viewModel.currentSteps.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putInt("diffusion_steps", it).apply()
+                        volume = viewModel.currentVolume.value,
+                        onVolumeChange = {
+                            viewModel.currentVolume.value = it
+                            getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit().putFloat("volume", it).apply()
+                        },
+                        threads = viewModel.currentThreads.value,
+                        onThreadsChange = {
+                            viewModel.currentThreads.value = it
+                            getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit().putInt("inference_threads", it).apply()
+                            val resetIntent = Intent(this, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                            startService(resetIntent)
                         },
 
                         onResetClick = {
@@ -303,14 +311,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadPreferences() {
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE)
         viewModel.currentLang.value = "en"
         viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", MainViewModel.DEFAULT_VOICE) ?: MainViewModel.DEFAULT_VOICE
-        viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", MainViewModel.DEFAULT_VOICE_2) ?: MainViewModel.DEFAULT_VOICE_2
-        viewModel.isMixingEnabled.value = prefs.getBoolean("is_mixing_enabled", false)
-        viewModel.mixAlpha.value = prefs.getFloat("mix_alpha", 0.5f)
-        viewModel.currentSpeed.value = prefs.getFloat("speed", MainViewModel.DEFAULT_SPEED) ?: MainViewModel.DEFAULT_SPEED
-        viewModel.currentSteps.value = prefs.getInt("diffusion_steps", MainViewModel.DEFAULT_STEPS)
+        viewModel.currentSpeed.value = prefs.getFloat("speed", 1.0f)
+        viewModel.currentVolume.value = prefs.getFloat("volume", 1.0f)
+        viewModel.currentThreads.value = prefs.getInt("inference_threads", MainViewModel.DEFAULT_THREADS)
     }
 
     private fun checkNotificationPermission() {
@@ -330,7 +336,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveStringPref(key: String, value: String) {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+        getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit()
             .putString(key, value)
             .apply()
     }
@@ -373,12 +379,14 @@ class MainActivity : ComponentActivity() {
             }
             
             // Force release of any existing engine to ensure we load the new model path
-            SupertonicTTS.release()
+            PiperTTS.release()
             
-            val modelPath = AssetManager.getModelPath(this@MainActivity, version)
+            val voiceFile = viewModel.selectedVoiceFile.value
+            val modelPath = AssetManager.getModelPath(this@MainActivity, voiceFile)
             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
 
-            if (SupertonicTTS.initialize(modelPath, libPath)) {
+            val threads = viewModel.currentThreads.value
+            if (PiperTTS.initialize(modelPath, libPath, ortThreads = threads)) {
                 withContext(Dispatchers.Main) {
                     viewModel.isInitializing.value = false
                 }
@@ -401,31 +409,48 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupVoicesMap(version: String) {
-        val voiceResources = mapOf(
-            "M1.json" to R.string.voice_m1,
-            "M2.json" to R.string.voice_m2,
-            "M3.json" to R.string.voice_m3,
-            "M4.json" to R.string.voice_m4,
-            "M5.json" to R.string.voice_m5,
-            "F1.json" to R.string.voice_f1,
-            "F2.json" to R.string.voice_f2,
-            "F3.json" to R.string.voice_f3,
-            "F4.json" to R.string.voice_f4,
-            "F5.json" to R.string.voice_f5
+        viewModel.voiceFiles.clear()
+        val lang = viewModel.currentLang.value
+        
+        val allVoices = mapOf(
+            "en" to mapOf(
+                "en_US-lessac-high.onnx" to "Lessac (High)",
+                "en_US-amy-low.onnx" to "Amy (Low)",
+                "en_US-danny-low.onnx" to "Danny (Low)",
+                "en_US-ryan-medium.onnx" to "Ryan (Medium)",
+                "en_GB-vctk-medium.onnx" to "VCTK (Medium)"
+            ),
+            "es" to mapOf(
+                "es_ES-sharvard-medium.onnx" to "Sharvard (Medium)",
+                "es_MX-ald-medium.onnx" to "Ald (Medium)"
+            ),
+            "fr" to mapOf(
+                "fr_FR-siwis-medium.onnx" to "Siwis (Medium)",
+                "fr_FR-siwis-low.onnx" to "Siwis (Low)"
+            ),
+            "pt" to mapOf(
+                "pt_BR-edresson-low.onnx" to "Edresson (Low)"
+            ),
+            "ko" to mapOf(
+                "ko_KR-ljspeech-medium.onnx" to "LJSpeech (Medium)"
+            )
         )
 
-        voiceResources.forEach { (filename, resId) ->
-            viewModel.voiceFiles[getString(resId)] = filename
+        val langVoices = allVoices[lang] ?: emptyMap()
+        langVoices.forEach { (filename, label) ->
+            viewModel.voiceFiles[label] = filename
         }
 
-        // Check dynamic dir for default listing
-        val voiceDir = File(filesDir, "$version/voice_styles")
-        if (voiceDir.exists()) {
-            val files = voiceDir.listFiles { _, name -> name.endsWith(".json") }
+        // Check dynamic dir for extra onnx models matching this language
+        val onnxDir = File(filesDir, "piper")
+        if (onnxDir.exists()) {
+            val prefix = "${lang}_"
+            val files = onnxDir.listFiles { _, name -> name.endsWith(".onnx") && name.startsWith(prefix, ignoreCase = true) }
             files?.forEach { file ->
-                if (!voiceResources.containsKey(file.name)) {
-                    val friendlyName = file.name.removeSuffix(".json")
-                    viewModel.voiceFiles[friendlyName] = file.name
+                val filename = file.name
+                if (!langVoices.containsKey(filename)) {
+                    val friendlyName = filename.removeSuffix(".onnx").replace("_", " ").replace("-", " ")
+                    viewModel.voiceFiles[friendlyName] = filename
                 }
             }
         }
@@ -440,9 +465,7 @@ class MainActivity : ComponentActivity() {
 
         if (viewModel.isInitializing.value) return
 
-        val v1Name = viewModel.voiceFiles.entries.find { it.value == viewModel.selectedVoiceFile.value }?.key ?: "Voice 1"
-        val v2Name = viewModel.voiceFiles.entries.find { it.value == viewModel.selectedVoiceFile2.value }?.key ?: "Voice 2"
-        val voiceName = if (viewModel.isMixingEnabled.value) "Mixed: $v1Name + $v2Name" else v1Name
+        val voiceName = viewModel.voiceFiles.entries.find { it.value == viewModel.selectedVoiceFile.value }?.key ?: "Default Voice"
 
         HistoryManager.saveItem(this, text, voiceName)
 
@@ -472,6 +495,7 @@ class MainActivity : ComponentActivity() {
                 text,
                 viewModel.currentLang.value,
                 viewModel.currentSpeed.value,
+                viewModel.currentVolume.value,
                 0
             )
             Toast.makeText(this, getString(R.string.added_to_queue), Toast.LENGTH_SHORT).show()
@@ -496,6 +520,7 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, PlaybackActivity::class.java).apply {
             putExtra(PlaybackActivity.EXTRA_TEXT, text)
             putExtra(PlaybackActivity.EXTRA_SPEED, viewModel.currentSpeed.value)
+            putExtra(PlaybackActivity.EXTRA_VOLUME, viewModel.currentVolume.value)
             putExtra(PlaybackActivity.EXTRA_LANG, viewModel.currentLang.value)
         }
         startActivity(intent)
@@ -519,7 +544,7 @@ class MainActivity : ComponentActivity() {
     private fun checkResumeState() {
         if (viewModel.isDownloading.value) return
 
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE)
         val lastText = prefs.getString("last_text", null)
         val isPlaying = prefs.getBoolean("is_playing", false)
 
@@ -533,7 +558,7 @@ class MainActivity : ComponentActivity() {
                     startActivity(intent)
                 }
                 .setNegativeButton(getString(R.string.no)) { _, _ ->
-                    getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+                    getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit()
                         .putBoolean("is_playing", false)
                         .apply()
                     val stopIntent = Intent(this, PlaybackService::class.java)

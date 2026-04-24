@@ -12,22 +12,22 @@ mod thermal;
 mod piper;
 
 use helper::{load_text_to_speech, TextToSpeech};
-use piper::PiperEngine;
+use piper::PiperEngine as InternalPiperEngine;
 use thermal::{UnifiedThermalManager, SocClass};
 
-enum EngineType {
-    Supertonic(TextToSpeech),
-    Piper(PiperEngine),
+enum PiperEngineType {
+    Standard(TextToSpeech),
+    Piper(InternalPiperEngine),
 }
 
-struct SupertonicEngine {
-    engine: EngineType,
+struct PiperTtsEngine {
+    engine: PiperEngineType,
     thermal: UnifiedThermalManager,
     last_rtf: f32,
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_init(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_init(
     mut env: JNIEnv,
     _instance: JObject, // It's an instance method of the singleton object
     model_path: JString,
@@ -60,7 +60,6 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_init(
         log::warn!("ORT initialization: Already initialized or failed");
     }
 
-    // Detect if it's a Piper model or Supertonic model
     let engine_type = if model_path_str.ends_with(".onnx") {
         log::info!("Piper model detected");
         let config_path = format!("{}.json", model_path_str);
@@ -72,25 +71,25 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_init(
         
         log::info!("Piper config: {}, espeak-ng-data parent: {:?}", config_path, espeak_data_path);
 
-        match PiperEngine::new(model_path_obj, Path::new(&config_path), espeak_data_path, ort_threads as usize) {
-            Ok(p) => EngineType::Piper(p),
+        match InternalPiperEngine::new(model_path_obj, Path::new(&config_path), espeak_data_path, ort_threads as usize) {
+            Ok(p) => PiperEngineType::Piper(p),
             Err(e) => {
                 log::error!("Failed to load Piper: {:?}", e);
                 return 0;
             }
         }
     } else {
-        log::info!("Supertonic model directory detected");
+        log::info!("Piper model directory detected");
         match load_text_to_speech(&model_path_str, false, false, ort_threads as usize, xnn_threads as usize) {
-            Ok(t) => EngineType::Supertonic(t),
+            Ok(t) => PiperEngineType::Standard(t),
             Err(e) => {
-                log::error!("Failed to load Supertonic: {:?}", e);
+                log::error!("Failed to load Piper: {:?}", e);
                 return 0;
             }
         }
     };
 
-    let engine = SupertonicEngine {
+    let engine = PiperTtsEngine {
         engine: engine_type,
         thermal: UnifiedThermalManager::new(),
         last_rtf: 1.0,
@@ -101,20 +100,21 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_init(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_synthesize(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_synthesize(
     mut env: JNIEnv,
     instance: JObject,
     ptr: jlong,
     text: JString,
     lang: JString,
     speed: jfloat,
+    volume: jfloat,
     buffer_seconds: jfloat,
 ) -> jbyteArray {
     if ptr == 0 {
         log::error!("synthesize called with null pointer");
         return env.new_byte_array(0).unwrap().into_raw();
     }
-    let engine = unsafe { &mut *(ptr as *mut SupertonicEngine) };
+    let engine = unsafe { &mut *(ptr as *mut PiperTtsEngine) };
     
     let text: String = match env.get_string(&text) {
         Ok(s) => s.into(),
@@ -131,13 +131,13 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_synthesize(
         }
     };
 
-    log::info!("Synthesize request: len={}, lang={}, speed={}", text.len(), lang, speed);
+    log::info!("Synthesize request: len={}, lang={}, speed={}, volume={}", text.len(), lang, speed, volume);
 
     engine.thermal.update(buffer_seconds, engine.last_rtf);
     let start = Instant::now();
 
     match &mut engine.engine {
-        EngineType::Piper(p) => {
+        PiperEngineType::Piper(p) => {
             log::info!("Synthesizing with Piper (streaming)...");
             let mut last_progress_call = Instant::now();
             
@@ -160,7 +160,9 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_synthesize(
                     let res: jni::errors::Result<()> = env.with_local_frame(16, |env| {
                         let mut pcm_data = Vec::with_capacity(audio.len() * 2);
                         for &sample in audio {
-                            let clamped = sample.max(-1.0).min(1.0);
+                            // Apply volume gain to float sample
+                            let boosted = sample * volume;
+                            let clamped = boosted.max(-1.0).min(1.0);
                             let val = (clamped * 32767.0) as i16;
                             pcm_data.extend_from_slice(&val.to_le_bytes());
                         }
@@ -196,7 +198,9 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_synthesize(
                     
                     let mut pcm_data = Vec::with_capacity(wav_data.len() * 2);
                     for &sample in &wav_data {
-                        let clamped = sample.max(-1.0).min(1.0);
+                        // Apply volume gain to float sample
+                        let boosted = sample * volume;
+                        let clamped = boosted.max(-1.0).min(1.0);
                         let val = (clamped * 32767.0) as i16;
                         pcm_data.extend_from_slice(&val.to_le_bytes());
                     }
@@ -221,35 +225,38 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_synthesize(
                 }
             }
         },
-        EngineType::Supertonic(_) => {
-            log::error!("Supertonic engine path is not supported in this Piper build");
+        PiperEngineType::Standard(p) => {
+            log::info!("Synthesizing with Piper (standard)...");
+            // TextToSpeech::call parameters: text, lang, style, total_step, speed, silence_duration, callback
+            
+            log::error!("Standard engine path is currently not fully implemented in JNI synthesize with volume");
             env.new_byte_array(0).unwrap().into_raw()
         }
     }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_getSampleRate(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_getSampleRate(
     _env: JNIEnv,
     _instance: JObject,
     ptr: jlong,
 ) -> jint {
     if ptr == 0 { return 22050; }
-    let engine = unsafe { &mut *(ptr as *mut SupertonicEngine) };
+    let engine = unsafe { &mut *(ptr as *mut PiperTtsEngine) };
     match &engine.engine {
-        EngineType::Supertonic(tts) => tts.sample_rate as jint,
-        EngineType::Piper(p) => p.config.audio.sample_rate as jint,
+        PiperEngineType::Standard(tts) => tts.sample_rate as jint,
+        PiperEngineType::Piper(p) => p.config.audio.sample_rate as jint,
     }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_getSocClass(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_getSocClass(
     _env: JNIEnv,
     _instance: JObject,
     ptr: jlong,
 ) -> jint {
     if ptr == 0 { return -1; }
-    let engine = unsafe { &mut *(ptr as *mut SupertonicEngine) };
+    let engine = unsafe { &mut *(ptr as *mut PiperTtsEngine) };
     match engine.thermal.get_soc_class() {
         SocClass::Flagship => 3,
         SocClass::HighEnd => 2,
@@ -259,27 +266,27 @@ pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_getSocClass(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_reset(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_reset(
     _env: JNIEnv,
     _instance: JObject,
     ptr: jlong,
 ) {
     if ptr != 0 {
-        let engine = unsafe { &mut *(ptr as *mut SupertonicEngine) };
+        let engine = unsafe { &mut *(ptr as *mut PiperTtsEngine) };
         engine.last_rtf = 1.0;
         log::info!("Engine state reset");
     }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_brahmadeo_piper_tts_SupertonicTTS_close(
+pub extern "system" fn Java_com_brahmadeo_piper_tts_PiperTTS_close(
     _env: JNIEnv,
     _instance: JObject,
     ptr: jlong,
 ) {
     if ptr != 0 {
         unsafe {
-            let _ = Box::from_raw(ptr as *mut SupertonicEngine);
+            let _ = Box::from_raw(ptr as *mut PiperTtsEngine);
         }
     }
 }

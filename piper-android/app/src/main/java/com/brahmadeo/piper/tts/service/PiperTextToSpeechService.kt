@@ -6,58 +6,33 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.TextToSpeechService
 import android.speech.tts.Voice
 import android.util.Log
-import com.brahmadeo.piper.tts.SupertonicTTS
+import android.content.Context
+import com.brahmadeo.piper.tts.PiperTTS
 import com.brahmadeo.piper.tts.utils.AssetManager
-import com.brahmadeo.piper.tts.utils.LanguageDetector
 import kotlinx.coroutines.*
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.Locale
 
-class SupertonicTextToSpeechService : TextToSpeechService() {
+class PiperTextToSpeechService : TextToSpeechService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var initJob: Job? = null
 
-    companion object {
-        const val VOLUME_BOOST_FACTOR = 2.5f
-    }
-
-    private fun applyVolumeBoost(pcmData: ByteArray, gain: Float): ByteArray {
-        if (gain == 1.0f) return pcmData
-        val size = pcmData.size
-        val boosted = ByteArray(size)
-        val inBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val outBuffer = ByteBuffer.wrap(boosted).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val count = size / 2
-        for (i in 0 until count) {
-            val sample = inBuffer.get(i)
-            var scaled = (sample * gain).toInt()
-            if (scaled > 32767) scaled = 32767
-            if (scaled < -32768) scaled = -32768
-            outBuffer.put(i, scaled.toShort())
-        }
-        return boosted
-    }
-
     override fun onCreate() {
         super.onCreate()
-        Log.i("SupertonicTTS", "Service created")
+        Log.i("PiperTTS", "Service created")
         com.brahmadeo.piper.tts.utils.LexiconManager.load(this)
         
         initJob = serviceScope.launch(Dispatchers.IO) {
-            AssetManager.downloadV1(this@SupertonicTextToSpeechService) { _, _ -> }
-            val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
-            val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-            val modelVersion = if (savedLang == "en") "v1" else "v2"
+            AssetManager.downloadV1(this@PiperTextToSpeechService) { _, _ -> }
+            val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
+            val voiceFile = prefs.getString("selected_voice", "en_US-lessac-high.onnx") ?: "en_US-lessac-high.onnx"
 
-            val modelPath = AssetManager.getModelPath(this@SupertonicTextToSpeechService, modelVersion)
+            val modelPath = AssetManager.getModelPath(this@PiperTextToSpeechService, voiceFile)
             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
+            val threads = prefs.getInt("inference_threads", 4)
 
-            SupertonicTTS.initialize(modelPath, libPath)
+            PiperTTS.initialize(modelPath, libPath, ortThreads = threads)
         }
     }
 
@@ -68,10 +43,9 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
         val language = lang?.lowercase(Locale.ROOT) ?: return TextToSpeech.LANG_NOT_SUPPORTED
-        val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
 
-        // Map selectedLang to ISO 3-letter codes if necessary or just prefixes
         val allowedPrefixes = when(selectedLang) {
             "ko" -> listOf("ko", "kor")
             "es" -> listOf("es", "spa")
@@ -81,7 +55,6 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         }
 
         val isSupported = allowedPrefixes.any { language.startsWith(it) }
-
         if (!isSupported) return TextToSpeech.LANG_NOT_SUPPORTED
 
         return if (country != null && country.isNotEmpty()) {
@@ -92,7 +65,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
     }
 
     override fun onGetLanguage(): Array<String> {
-        val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
         
         return when(selectedLang) {
@@ -110,24 +83,16 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     override fun onLoadVoice(voiceName: String?): Int {
         if (voiceName == null) return TextToSpeech.ERROR
-        // Broaden prefix check to handle all Supertonic voices
-        if (voiceName.contains("-supertonic-")) {
-            if ((getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
-                    .getString("selected_lang", "en") ?: "en") == "en"
-            ) {
-                return TextToSpeech.SUCCESS
-            }
-            val styleName = voiceName.substringAfter("-supertonic-")
-            val file = File(filesDir, "v2/voice_styles/$styleName.json")
-            if (file.exists()) return TextToSpeech.SUCCESS
+        if (voiceName.contains("-piper-")) {
+            return TextToSpeech.SUCCESS
         }
         return TextToSpeech.ERROR
     }
 
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
-        val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
-        val selected = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
-        val voiceName = if (selected.endsWith(".json")) selected.substringBeforeLast(".") else selected
+        val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
+        val selected = prefs.getString("selected_voice", "en_US-lessac-high.onnx") ?: "en_US-lessac-high.onnx"
+        val voiceName = selected.removeSuffix(".onnx")
         
         val language = lang?.lowercase(Locale.ROOT) ?: "en"
         val prefix = when {
@@ -137,16 +102,14 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             language.startsWith("fr") || language.startsWith("fra") || language.startsWith("fre") -> "fr"
             else -> "en"
         }
-        return "$prefix-supertonic-$voiceName"
+        return "$prefix-piper-$voiceName"
     }
 
     override fun onGetVoices(): List<Voice> {
-        val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
 
         val voicesList = mutableListOf<Voice>()
-
-        // Only broadcast voices for the currently selected language
         val locale = when(selectedLang) {
             "ko" -> Locale.KOREA
             "es" -> Locale.forLanguageTag("es-ES")
@@ -155,18 +118,19 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             else -> Locale.US
         }
 
-        val voiceNames = listOf("M1", "M2", "M3", "M4", "M5", "F1", "F2", "F3", "F4", "F5")
+        // Generic labels for system list
+        val voiceNames = listOf("Default", "Alternative")
         val langPrefix = locale.language
 
         voiceNames.forEach { name ->
-            voicesList.add(Voice("$langPrefix-supertonic-$name", locale, Voice.QUALITY_VERY_HIGH, Voice.LATENCY_NORMAL, false, setOf()))
+            voicesList.add(Voice("$langPrefix-piper-$name", locale, Voice.QUALITY_VERY_HIGH, Voice.LATENCY_NORMAL, false, setOf()))
         }
 
         return voicesList
     }
 
     override fun onStop() {
-        SupertonicTTS.setCancelled(true)
+        PiperTTS.setCancelled(true)
     }
 
     private fun normalizeLanguage(lang: String?): String {
@@ -175,14 +139,9 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         return when {
             l.startsWith("en") -> "en"
             l.startsWith("ko") -> "ko"
-            l.startsWith("kor") -> "ko"
             l.startsWith("es") -> "es"
-            l.startsWith("spa") -> "es"
             l.startsWith("pt") -> "pt"
-            l.startsWith("por") -> "pt"
             l.startsWith("fr") -> "fr"
-            l.startsWith("fra") -> "fr"
-            l.startsWith("fre") -> "fr"
             else -> "en"
         }
     }
@@ -191,7 +150,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     override fun onSynthesizeText(request: SynthesisRequest?, callback: SynthesisCallback?) {
         if (request == null || callback == null) return
-        SupertonicTTS.setCancelled(false)
+        PiperTTS.setCancelled(false)
         runBlocking {
             withTimeoutOrNull(5000) {
                 initJob?.join()
@@ -199,46 +158,43 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         }
         val rawText = request.charSequenceText?.toString() ?: return
         val effectiveSpeed = (request.speechRate / 100.0f).coerceIn(0.5f, 2.5f)
-        callback.start(SupertonicTTS.getAudioSampleRate(), android.media.AudioFormat.ENCODING_PCM_16BIT, 1)
         
-        val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("PiperPrefs", android.content.Context.MODE_PRIVATE)
+        val voiceFile = prefs.getString("selected_voice", "en_US-lessac-high.onnx") ?: "en_US-lessac-high.onnx"
+        val volume = prefs.getFloat("volume", 1.0f)
+        val threads = prefs.getInt("inference_threads", 4)
 
-        val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-        val modelVersion = if (savedLang == "en") "v1" else "v2"
-
-        if (SupertonicTTS.getSoC() == -1) {
-             val modelPath = AssetManager.getModelPath(this, modelVersion)
+        if (PiperTTS.getSoC() == -1) {
+             val modelPath = AssetManager.getModelPath(this, voiceFile)
              val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
-             SupertonicTTS.initialize(modelPath, libPath)
+             PiperTTS.initialize(modelPath, libPath, ortThreads = threads)
         }
+
+        callback.start(PiperTTS.getAudioSampleRate(), android.media.AudioFormat.ENCODING_PCM_16BIT, 1)
         
         try {
             val sentences = textNormalizer.splitIntoSentences(rawText)
             val requestLang = normalizeLanguage(request.language)
             var success = true
             for (sentence in sentences) {
-                if (SupertonicTTS.isCancelled()) { success = false; break }
+                if (PiperTTS.isCancelled()) { success = false; break }
 
-                // Granular per-sentence detection
-                // val sentenceLang = LanguageDetector.detect(sentence, requestLang)
                 val sentenceLang = requestLang
                 val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
-
-                val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, effectiveSpeed, 0.0f, null)
+                val audioData = PiperTTS.generateAudio(normalizedText, sentenceLang, effectiveSpeed, volume, 0.0f, null)
                 
                 if (audioData != null && audioData.isNotEmpty()) {
-                    val boostedData = applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR)
                     var offset = 0
-                    while (offset < boostedData.size) {
-                        val length = Math.min(4096, boostedData.size - offset)
-                        callback.audioAvailable(boostedData, offset, length)
+                    while (offset < audioData.size) {
+                        val length = Math.min(4096, audioData.size - offset)
+                        callback.audioAvailable(audioData, offset, length)
                         offset += length
                     }
                 }
             }
             if (success) callback.done() else callback.error()
-        } finally {
-            // Isolation handled in SupertonicTTS
+        } catch (e: Exception) {
+            callback.error()
         }
     }
 }

@@ -16,7 +16,7 @@ import com.brahmadeo.piper.tts.service.IPlaybackListener
 import com.brahmadeo.piper.tts.service.IPlaybackService
 import com.brahmadeo.piper.tts.service.PlaybackService
 import com.brahmadeo.piper.tts.ui.PlaybackScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.TextNormalizer
 import java.io.File
 import java.text.SimpleDateFormat
@@ -38,11 +38,13 @@ class PlaybackActivity : ComponentActivity() {
     // State persistence
     private var currentText = ""
     private var currentSpeed = 1.0f
+    private var currentVolume = 1.0f
     private var currentLang = "en"
 
     companion object {
         const val EXTRA_TEXT = "extra_text"
         const val EXTRA_SPEED = "extra_speed"
+        const val EXTRA_VOLUME = "extra_volume"
         const val EXTRA_LANG = "extra_lang"
     }
 
@@ -111,12 +113,14 @@ class PlaybackActivity : ComponentActivity() {
 
         currentText = intent.getStringExtra(EXTRA_TEXT) ?: ""
         currentSpeed = intent.getFloatExtra(EXTRA_SPEED, 1.0f)
+        currentVolume = intent.getFloatExtra(EXTRA_VOLUME, 1.0f)
         currentLang = intent.getStringExtra(EXTRA_LANG) ?: "en"
 
         if (intent.getBooleanExtra("is_resume", false) && currentText.isEmpty()) {
-             val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+             val prefs = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE)
              currentText = prefs.getString("last_text", "") ?: ""
              currentSpeed = prefs.getFloat("last_speed", 1.0f)
+             currentVolume = prefs.getFloat("last_volume", 1.0f)
              currentLang = prefs.getString("last_lang", "en") ?: "en"
              currentIndexState.intValue = prefs.getInt("last_index", 0)
         }
@@ -124,7 +128,7 @@ class PlaybackActivity : ComponentActivity() {
         setupList(currentText)
 
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 PlaybackScreen(
                     sentences = sentencesState.value,
                     currentIndex = currentIndexState.intValue,
@@ -196,7 +200,7 @@ class PlaybackActivity : ComponentActivity() {
         if (currentText.isEmpty()) return
         saveState()
         try {
-            playbackService?.synthesizeAndPlay(currentText, currentLang, currentSpeed, 0)
+            playbackService?.synthesizeAndPlay(currentText, currentLang, currentSpeed, currentVolume, 0)
         } catch (e: RemoteException) {
             e.printStackTrace()
         }
@@ -206,29 +210,30 @@ class PlaybackActivity : ComponentActivity() {
         if (currentText.isEmpty()) return
         saveState()
         try {
-            playbackService?.synthesizeAndPlay(currentText, currentLang, currentSpeed, index)
+            playbackService?.synthesizeAndPlay(currentText, currentLang, currentSpeed, currentVolume, index)
         } catch (e: RemoteException) {
             e.printStackTrace()
         }
     }
 
     private fun saveState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+        getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit()
             .putString("last_text", currentText)
             .putFloat("last_speed", currentSpeed)
+            .putFloat("last_volume", currentVolume)
             .putString("last_lang", currentLang)
             .putBoolean("is_playing", true)
             .apply()
     }
 
     private fun updateIndexState(index: Int) {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+        getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit()
             .putInt("last_index", index)
             .apply()
     }
 
     private fun clearState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+        getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE).edit()
             .putBoolean("is_playing", false)
             .apply()
     }
@@ -244,14 +249,14 @@ class PlaybackActivity : ComponentActivity() {
     private fun startExport() {
         isExportingState.value = true
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val filename = "Supertonic_TTS_$timestamp.wav"
+        val filename = "Piper_TTS_$timestamp.wav"
         val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-        val appDir = File(musicDir, "Supertonic Audio")
+        val appDir = File(musicDir, "Piper Audio")
         if (!appDir.exists()) appDir.mkdirs()
         val file = File(appDir, filename)
 
         try {
-            playbackService?.exportAudio(currentText, currentLang, currentSpeed, file.absolutePath)
+            playbackService?.exportAudio(currentText, currentLang, currentSpeed, currentVolume, file.absolutePath)
         } catch (e: RemoteException) {
             e.printStackTrace()
             isExportingState.value = false

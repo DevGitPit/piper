@@ -9,7 +9,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.brahmadeo.piper.tts.ui.QueueScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 import com.brahmadeo.piper.tts.utils.QueueManager
 
 class QueueActivity : ComponentActivity() {
@@ -18,7 +18,7 @@ class QueueActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 val showClearDialog = remember { mutableStateOf(false) }
 
                 if (showClearDialog.value) {

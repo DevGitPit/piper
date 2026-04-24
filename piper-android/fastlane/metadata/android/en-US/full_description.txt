@@ -1,4 +1,4 @@
-Supertonic TTS is a high-performance, on-device text-to-speech (TTS) system for Android. It uses Supertonic ONNX models to provide high-quality speech synthesis entirely offline, ensuring privacy and availability without an internet connection.
+Piper TTS is a high-performance, on-device text-to-speech (TTS) system for Android. It uses Piper ONNX models to provide high-quality speech synthesis entirely offline, ensuring privacy and availability without an internet connection.
 
 Key Features:
 - Offline Inference: Runs entirely on-device using ONNX Runtime.
@@ -10,4 +10,4 @@ Key Features:
 - History & Queue: Easily track and manage your synthesis requests.
 - Multilingual Support: Support for various voices and styles.
 
-Whether you need a standalone TTS player or a system-wide speech engine, Supertonic TTS provides a fast, reliable, and private solution.
+Whether you need a standalone TTS player or a system-wide speech engine, Piper TTS provides a fast, reliable, and private solution.

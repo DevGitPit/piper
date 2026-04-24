@@ -22,7 +22,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.brahmadeo.piper.tts.MainActivity
 import com.brahmadeo.piper.tts.R
-import com.brahmadeo.piper.tts.SupertonicTTS
+import com.brahmadeo.piper.tts.PiperTTS
 import com.brahmadeo.piper.tts.utils.AssetManager
 import com.brahmadeo.piper.tts.utils.LanguageDetector
 import com.brahmadeo.piper.tts.utils.TextNormalizer
@@ -37,15 +37,15 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.OnAudioFocusChangeListener {
+class PlaybackService : Service(), PiperTTS.ProgressListener, AudioManager.OnAudioFocusChangeListener {
 
     private val binder = object : IPlaybackService.Stub() {
-        override fun synthesizeAndPlay(text: String, lang: String, speed: Float, startIndex: Int) {
-            this@PlaybackService.synthesizeAndPlay(text, lang, speed, startIndex)
+        override fun synthesizeAndPlay(text: String, lang: String, speed: Float, volume: Float, startIndex: Int) {
+            this@PlaybackService.synthesizeAndPlay(text, lang, speed, volume, startIndex)
         }
 
-        override fun addToQueue(text: String, lang: String, speed: Float, startIndex: Int) {
-            this@PlaybackService.addToQueue(text, lang, speed, startIndex)
+        override fun addToQueue(text: String, lang: String, speed: Float, volume: Float, startIndex: Int) {
+            this@PlaybackService.addToQueue(text, lang, speed, volume, startIndex)
         }
 
         override fun play() {
@@ -68,8 +68,8 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             this@PlaybackService.setListener(listener)
         }
 
-        override fun exportAudio(text: String, lang: String, speed: Float, outputPath: String) {
-            this@PlaybackService.exportAudio(text, lang, speed, File(outputPath))
+        override fun exportAudio(text: String, lang: String, speed: Float, volume: Float, outputPath: String) {
+            this@PlaybackService.exportAudio(text, lang, speed, volume, File(outputPath))
         }
 
         override fun getCurrentIndex(): Int {
@@ -103,28 +103,10 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     private var currentSentenceIndex: Int = 0
 
     companion object {
-        const val CHANNEL_ID = "supertonic_playback"
+        const val CHANNEL_ID = "piper_playback"
         const val NOTIFICATION_ID = 1
         const val TAG = "PlaybackService"
-        const val VOLUME_BOOST_FACTOR = 2.5f
         const val AUDIO_WRITE_CHUNK_SIZE = 8192
-    }
-
-    private fun applyVolumeBoost(pcmData: ByteArray, gain: Float): ByteArray {
-        if (gain == 1.0f) return pcmData
-        val size = pcmData.size
-        val boosted = ByteArray(size)
-        val inBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val outBuffer = ByteBuffer.wrap(boosted).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val count = size / 2
-        for (i in 0 until count) {
-            val sample = inBuffer.get(i)
-            var scaled = (sample * gain).toInt()
-            if (scaled > 32767) scaled = 32767
-            if (scaled < -32768) scaled = -32768
-            outBuffer.put(i, scaled.toShort())
-        }
-        return boosted
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -139,9 +121,9 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Supertonic:PlaybackWakeLock")
+        wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Piper:PlaybackWakeLock")
         
-        mediaSession = MediaSessionCompat(this, "SupertonicMediaSession").apply {
+        mediaSession = MediaSessionCompat(this, "PiperMediaSession").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() { this@PlaybackService.play() }
                 override fun onPause() { this@PlaybackService.pause() }
@@ -155,14 +137,15 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         if (intent?.action == "STOP_PLAYBACK") {
             stopPlayback()
         } else if (intent?.action == "RESET_ENGINE") {
-            SupertonicTTS.release()
+            PiperTTS.release()
         }
         return START_NOT_STICKY
     }
 
     private fun ensureEngineInitialized(lang: String): Boolean {
-        val modelVersion = if (lang == "en") "v1" else "v2"
-        val modelPath = AssetManager.getModelPath(this, modelVersion)
+        val prefs = getSharedPreferences("PiperPrefs", Context.MODE_PRIVATE)
+        val voiceFile = prefs.getString("selected_voice", "en_US-lessac-high.onnx") ?: "en_US-lessac-high.onnx"
+        val modelPath = AssetManager.getModelPath(this, voiceFile)
         
         // Verify model file exists on disk
         val modelFile = File(modelPath)
@@ -172,26 +155,29 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         }
         
         val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
-        Log.i(TAG, "Initializing engine for $lang with model: $modelPath")
-        return SupertonicTTS.initialize(modelPath, libPath)
+        val threads = prefs.getInt("inference_threads", 4)
+        
+        Log.i(TAG, "Initializing engine for $lang with model: $modelPath (Threads: $threads)")
+        return PiperTTS.initialize(modelPath, libPath, ortThreads = threads)
     }
 
     fun isServiceActive(): Boolean {
         return isPlaying || isSynthesizing
     }
 
-    fun addToQueue(text: String, lang: String, speed: Float, startIndex: Int) {
+    fun addToQueue(text: String, lang: String, speed: Float, volume: Float, startIndex: Int) {
         QueueManager.add(QueueItem(
             text = text,
             lang = lang,
             speed = speed,
+            volume = volume,
             startIndex = startIndex
         ))
     }
 
     private var synthesisJob: Job? = null
 
-    fun synthesizeAndPlay(text: String, lang: String, speed: Float, startIndex: Int = 0) {
+    fun synthesizeAndPlay(text: String, lang: String, speed: Float, volume: Float, startIndex: Int = 0) {
         serviceScope.launch {
             if (!ensureEngineInitialized(lang)) {
                 Log.e(TAG, "Engine initialization failed for language: $lang")
@@ -200,7 +186,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             }
 
             if (synthesisJob?.isActive == true) {
-                SupertonicTTS.setCancelled(true)
+                PiperTTS.setCancelled(true)
                 synthesisJob?.cancelAndJoin()
             }
             
@@ -208,7 +194,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             
             isSynthesizing = true
             isPlaying = true
-            SupertonicTTS.setCancelled(false) 
+            PiperTTS.setCancelled(false) 
             
             updatePlaybackState(PlaybackStateCompat.STATE_BUFFERING)
             startForegroundService("Synthesizing...", false)
@@ -238,23 +224,21 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                 launch {
                     var producedCount = 0
                     for (index in validStartIndex until totalSentences) {
-                        if (SupertonicTTS.isCancelled() || !isActive) break
+                        if (PiperTTS.isCancelled() || !isActive) break
                         
                         while (!isPlaying && isSynthesizing && isActive) {
                             delay(100)
                         }
-                        if (SupertonicTTS.isCancelled() || !isActive || !isSynthesizing) break
+                        if (PiperTTS.isCancelled() || !isActive || !isSynthesizing) break
 
                         val sentence = sentences[index]
                         val sentenceLang = lang // Strict enforcement as per requirement
                         val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
 
-                        val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, speed, 0.0f, null)
+                        val audioData = PiperTTS.generateAudio(normalizedText, sentenceLang, speed, volume, 0.0f, null)
                         
                         if (audioData != null && audioData.isNotEmpty()) {
-                            val boostedData = applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR)
-                            
-                            channel.send(PlaybackItem(index, boostedData))
+                            channel.send(PlaybackItem(index, audioData))
                             producedCount++
                             
                             // Signal pre-buffer complete when 3 chunks are ready (2 in buffer)
@@ -283,7 +267,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
 
                 // Consumer
                 for (item in channel) {
-                    if (SupertonicTTS.isCancelled() || !isActive || !isSynthesizing) break
+                    if (PiperTTS.isCancelled() || !isActive || !isSynthesizing) break
                     
                     withContext(Dispatchers.Main) {
                         currentSentenceIndex = item.index
@@ -306,8 +290,8 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         // Check queue for next item
                         val nextItem = QueueManager.next()
                         if (nextItem != null) {
-                            SupertonicTTS.reset() // Explicit JNI Handshake
-                            synthesizeAndPlay(nextItem.text, nextItem.lang, nextItem.speed, nextItem.startIndex)
+                            PiperTTS.reset() // Explicit JNI Handshake
+                            synthesizeAndPlay(nextItem.text, nextItem.lang, nextItem.speed, nextItem.volume, nextItem.startIndex)
                         } else {
                             stopPlayback()
                         }
@@ -319,7 +303,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
 
     private suspend fun playAudioDataBlocking(data: ByteArray) {
         if (!currentCoroutineContext().isActive) return
-        val rate = SupertonicTTS.getAudioSampleRate()
+        val rate = PiperTTS.getAudioSampleRate()
         
         // Reuse or create AudioTrack
         var track: AudioTrack? = null
@@ -450,7 +434,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
 
     fun stopServicePlayback() {
         serviceScope.launch {
-            SupertonicTTS.setCancelled(true)
+            PiperTTS.setCancelled(true)
             synthesisJob?.cancelAndJoin()
             isSynthesizing = false
             stopPlayback()
@@ -512,14 +496,14 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         }
     }
 
-    fun exportAudio(text: String, lang: String, speed: Float, outputFile: File) {
+    fun exportAudio(text: String, lang: String, speed: Float, volume: Float, outputFile: File) {
         serviceScope.launch {
             if (synthesisJob?.isActive == true) {
-                SupertonicTTS.setCancelled(true)
+                PiperTTS.setCancelled(true)
                 synthesisJob?.cancelAndJoin()
             }
             stopPlayback()
-            SupertonicTTS.setCancelled(false)
+            PiperTTS.setCancelled(false)
             startForegroundService("Exporting Audio...", false)
             launch(Dispatchers.IO) {
                 try {
@@ -531,13 +515,13 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         // val sentenceLang = LanguageDetector.detect(sentence, lang)
                         val sentenceLang = lang
                         val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
-                        val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, speed, 0.0f, null)
+                        val audioData = PiperTTS.generateAudio(normalizedText, sentenceLang, speed, volume, 0.0f, null)
                         if (audioData != null) {
-                            outputStream.write(applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR))
+                            outputStream.write(audioData)
                         }
                     }
                     if (success && outputStream.size() > 0) {
-                        WavUtils.saveWav(outputFile, outputStream.toByteArray(), SupertonicTTS.getAudioSampleRate())
+                        WavUtils.saveWav(outputFile, outputStream.toByteArray(), PiperTTS.getAudioSampleRate())
                         withContext(Dispatchers.Main) {
                             stopForeground(STOP_FOREGROUND_REMOVE)
                             try { listener?.onExportComplete(true, outputFile.absolutePath) } catch(e: RemoteException){}
@@ -581,7 +565,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         val activityIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, activityIntent, PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Supertonic TTS")
+            .setContentTitle("Piper TTS")
             .setContentText(status)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)

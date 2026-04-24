@@ -6,14 +6,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.brahmadeo.piper.tts.ui.HistoryScreen
-import com.brahmadeo.piper.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.piper.tts.ui.theme.PiperTheme
 
 class HistoryActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            SupertonicTheme {
+            PiperTheme {
                 HistoryScreen(
                     onBackClick = { finish() },
                     onItemClick = { item ->
